@@ -27,6 +27,10 @@ def save_checkpoint(learner: "Learner", config: SmokeConfig) -> Path:
 def restore_checkpoint(learner: "Learner", path: Path, config: SmokeConfig) -> None:
     """Restore tensors and counters; episodes and RNG streams restart on resume."""
     manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    # Older format-1 manifests predate explicit baseline profile/start names.
+    if isinstance(manifest.get("environment"), dict):
+        manifest["environment"].setdefault("reward_profile", "sparse")
+        manifest["environment"].setdefault("start_mode", "kickoff")
     expected = {"format": 1, "observations": 92, "actions": 90, "layers": [32, 32],
                 "environment": asdict(config.environment), "standardize_obs": False,
                 "standardize_returns": False}

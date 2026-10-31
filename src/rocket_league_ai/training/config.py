@@ -17,6 +17,8 @@ class EnvironmentConfig:
     action_repeat: int = 8
     episode_seconds: float = 10.0
     no_touch_seconds: float = 5.0
+    reward_profile: str = "sparse"
+    start_mode: str = "kickoff"
 
 
 @dataclass(frozen=True)
@@ -66,8 +68,12 @@ def load_config(path: Path) -> SmokeConfig:
     _integer(env.action_repeat, "action_repeat", 1, 120)
     for name in ("episode_seconds", "no_touch_seconds"):
         value = getattr(env, name)
-        if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 300:
-            raise ValueError(f"{name} must be finite and in (0, 300]")
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 300 or (name == "episode_seconds" and value == 0):
+            raise ValueError(f"{name} must be finite, <=300 and positive (no_touch_seconds may be zero)")
+    if env.reward_profile not in ("sparse", "approach_v1"):
+        raise ValueError("Unknown reward profile")
+    if env.start_mode not in ("kickoff", "approach"):
+        raise ValueError("Unknown start mode")
     if training.device not in ("auto", "cpu", "cuda"):
         raise ValueError("device must be auto, cpu or cuda; PPO MPS is unverified")
     for name, low, high in (

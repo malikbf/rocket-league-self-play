@@ -1,0 +1,18 @@
+# About 137 seconds of visible training plus initialization/updates/evaluation.
+[experiment]
+name = "live"
+seed = 43
+
+[environment]
+action_repeat = 8
+episode_seconds = 10.0
+no_touch_seconds = 5.0
+
+[training]
+device = "cpu"
+timesteps = 512
+batch_size = 128
+minibatch_size = 64
+epochs = 2
+iterations = 8
+timeout_seconds = 240

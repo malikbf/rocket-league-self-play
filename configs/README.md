@@ -19,3 +19,13 @@ Keep credentials and machine-specific paths out of shared configurations.
 two PPO epochs per iteration, and a five-minute overall deadline. Run with
 `python scripts/train_smoke.py --config configs/pilot.toml`. It starts a fresh
 policy unless `--resume` is supplied. The learner retains the latest five checkpoints.
+
+`live.toml` is a fresh seed-43 CPU run paced for visual inspection: 4,096 agent
+transitions with a four-minute deadline. Use `--live` to open the viewer. The CLI
+rejects live workloads that cannot fit the configured deadline at real-time speed.
+
+`approach.toml` adds near-ball practice starts and the `approach_v1` reward profile.
+It disables inactivity resets (`no_touch_seconds=0`), keeps a 30-second episode
+clock, and caps the headless experiment at 40,960 transitions/five minutes.
+Changing the environment profile requires a fresh run, not resume from a sparse
+checkpoint. Existing sparse configurations retain their old behaviour.

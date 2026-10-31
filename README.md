@@ -233,3 +233,108 @@ remain available even though the run has no successful `result.json`.
 1. Validate the bounded PPO command and resume on Windows CUDA.
 2. Run staged experiments and compare checkpoints using the same evaluation protocol.
 3. Expand evaluation before adding historical-opponent pools or longer training.
+
+
+## Watch a checkpoint on Apple Silicon macOS
+
+RLViser 0.9.3 is installed in ignored `artifacts/rlviser/`, with its bridge in a
+separate `.venv-viewer`. This isolation is necessary: the current bridge needs
+NumPy 2, while the training stack requires NumPy 1.26.4. Do not install the bridge
+into the training environment.
+
+One-time setup on another Apple Silicon Mac (official binary checksum verified):
+
+```bash
+python scripts/setup_viewer.py
+```
+
+With the training virtual environment active, watch the newest saved checkpoint:
+
+```bash
+python scripts/watch_policy.py
+```
+
+The command records 30 seconds of deterministic policy play at 15 frames/second,
+then loops it in RLViser for two minutes. Blue is the saved policy; orange is its
+frozen initial opponent. This is checkpoint playback, not live training or a
+Rocket League replay file. `--checkpoint path/to/PPO_POLICY.pt` selects another
+policy; `--seconds 60 --watch-seconds 300` records a minute and watches for five.
+`--record-only` exports without opening the viewer. Close the viewer or press
+Ctrl+C to stop. All viewer assets, settings and exported frames stay ignored.
+
+Press **Esc** to hide the menu, **1/2** to follow a car, **9** for director camera,
+**0** for free camera, **P** to pause, and **+/-** to change playback speed.
+Dragging objects does not change the recorded simulation. Repeated kickoffs are
+normal episode resets. The display timer counts playback rather than training time.
+Official viewer: https://github.com/VirxEC/rlviser
+
+
+## Watch training live on macOS
+
+```bash
+python scripts/train_smoke.py --config configs/live.toml --live
+```
+
+This starts a **fresh** CPU run and opens RLViser alongside it. Both cars use the
+current learning policy with sampled actions. Each real simulator step publishes
+an atomic latest-state file to the viewer's separate environment. No replay is
+used. The simulator is paced to real time, so it runs much slower than headless
+training. The view can briefly stop moving during PPO updates and final evaluation.
+
+The supplied config runs eight iterations of 512 agent transitions (4,096 total),
+about 137 seconds of simulation, with a four-minute overall deadline. Checkpoints
+are saved after each iteration. `--resume path/to/checkpoint` continues a compatible
+checkpoint instead. Without `--live`, training keeps its original full-speed mode.
+
+Camera keys work as in playback. Viewer pause/speed controls do not pause or alter
+the training simulation. Closing the viewer does not stop training; Ctrl+C in the
+training terminal stops the run. The supervisor closes the viewer when training
+ends. A run's `live-viewer.log` records viewer errors separately from training.
+Only one RLViser session should be open at a time (the bridge uses fixed ports).
+
+
+## Enclosed arena and first approach curriculum
+
+RocketSim already uses a closed soccar collision mesh. Bounded tests launch the
+ball at the side wall, back wall away from the goal, and ceiling and verify rebound
+without escaping. The viewer adds a simple wall/roof grid and open goal mouths as
+visual guides. These rectangular guides do not replace the rounded collision mesh.
+
+The upstream macOS RLViser 0.9.3 build receives custom render groups but omits
+Bevy 0.18's `bevy_gizmos_render` feature. After viewer setup, build the corrected
+local copy with `python scripts/build_viewer.py`. This keeps a Rust toolchain and
+source under ignored `artifacts/viewer-build/`, verifies the source commit, enables
+that single feature, and installs the result in the local viewer app. The first
+build can take several minutes. Training dependencies are unchanged.
+
+For a bounded headless approach/contact experiment:
+
+```bash
+python scripts/train_smoke.py --config configs/approach.toml
+```
+
+This is an easier practice task: both cars start 900–1500 units from the ball,
+roughly facing it, with randomized positions and headings. `approach_v1` rewards
+moving toward the ball (at most 0.25 per simulated second), touches (1), directed
+touches toward the opponent goal (up to 1), and goals/concessions (+10/-10).
+It gives no approach reward for standing still, moving sideways or moving away.
+These weights are an experiment, not a proven reward design.
+
+The new config uses 30-second episodes and `no_touch_seconds = 0`: only a goal or
+the episode clock ends play. Older configs keep their existing limits and sparse
+reward profile. Changing reward/start settings requires a fresh run; compatible
+older sparse checkpoints still load. Full competitive match timing/overtime is not
+implemented.
+
+Each iteration now records actual ball touches, goals, car speed, signed speed
+toward the ball and mean reward in `progress.json`. The usual kickoff evaluation
+remains separate from the easier `practice-evaluation.json`. Both compare against
+the frozen initial opponent. Do not compare shaped reward totals with old sparse
+reward totals as if they measured the same objective.
+
+Train headlessly for throughput and watch checkpoints periodically. The approach
+pilot collected 34 touches and four goals during 40,960 sampled training
+transitions, but deterministic kickoff and practice evaluation still had zero
+touches. This is not evidence of learned competence. Next compare longer staged
+runs and multiple seeds, then gradually reintroduce full kickoff starts and
+harder opponents. Historical-opponent self-play remains unimplemented.

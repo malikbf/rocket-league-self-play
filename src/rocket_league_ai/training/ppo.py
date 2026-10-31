@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from rlgym_ppo.util import RLGymV2GymWrapper
 
 
-def build_ppo_env(settings: EnvironmentConfig, seed: int) -> "RLGymV2GymWrapper":
+def build_ppo_env(settings: EnvironmentConfig, seed: int, live_path: Path | None = None) -> "RLGymV2GymWrapper":
     """Picklable factory for the single smoke worker, including kickoff seeding."""
     import numpy as np
     from rlgym_ppo.util import RLGymV2GymWrapper
@@ -27,6 +27,9 @@ def build_ppo_env(settings: EnvironmentConfig, seed: int) -> "RLGymV2GymWrapper"
     np.random.seed(seed)
     env = build_env(**asdict(settings))
     try:
+        if live_path is not None:
+            from rocket_league_ai.training.live import LiveEnv
+            return LiveEnv(env, live_path, settings.action_repeat)
         return RLGymV2GymWrapper(env)
     except BaseException:
         env.close()
@@ -64,7 +67,7 @@ def _write_metadata(config: SmokeConfig, output: Path, root: Path, device: str) 
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
 
-def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None = None) -> None:
+def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None = None, live: bool = False) -> None:
     """Collect/update bounded batches, verify checkpoints, evaluate, and stop workers.
 
     Called only in the supervised subprocess. Avoid Learner.learn(): its terminal
@@ -79,6 +82,8 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
         restore_checkpoint, save_checkpoint, verify_checkpoint,
     )
 
+    from rocket_league_ai.training.metrics import TrainingMetrics, summarize
+
     settings = config.training
     device = select_device(settings.device)
     torch.set_num_threads(1)
@@ -87,8 +92,9 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
     result = None
     try:
         learner = Learner(
-            partial(build_ppo_env, config.environment, config.experiment.seed),
-            n_proc=1, min_inference_size=1, render=False,
+            partial(build_ppo_env, config.environment, config.experiment.seed,
+                    output / "live.json" if live else None),
+            n_proc=1, min_inference_size=1, render=False, metrics_logger=TrainingMetrics(),
             timestep_limit=settings.timesteps, ts_per_iteration=settings.timesteps,
             exp_buffer_size=settings.timesteps,
             policy_layer_sizes=(32, 32), critic_layer_sizes=(32, 32),
@@ -118,11 +124,13 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
         }, indent=2), encoding="utf-8")
         reports = []
         for iteration in range(settings.iterations):
-            experience, _, steps, _ = learner.agent.collect_timesteps(settings.timesteps)
+            experience, collected_metrics, steps, _ = learner.agent.collect_timesteps(settings.timesteps)
             if not settings.timesteps <= steps <= settings.timesteps + 2:
                 raise RuntimeError(f"Unexpected transition count: {steps}")
             if not all(np.isfinite(array).all() for array in experience):
                 raise RuntimeError("Nonfinite rollout data")
+            gameplay = summarize(collected_metrics)
+            gameplay["mean_reward_per_transition"] = float(np.asarray(experience[3]).mean())
             learner.add_new_experience(experience)
             report = learner.ppo_learner.learn(learner.experience_buffer)
             if not all(np.isfinite(value) for value in report.values()):
@@ -145,7 +153,7 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
                 if not torch.allclose(expected, actual, atol=1e-6, rtol=1e-5):
                     raise RuntimeError("Reloaded policy inference differs")
             reports.append({"iteration": iteration + 1, "steps": steps, "metrics": report,
-                            "checkpoint": str(checkpoint)})
+                            "checkpoint": str(checkpoint), "gameplay": gameplay})
             (output / "progress.json").write_text(json.dumps(reports, indent=2), encoding="utf-8")
         opponent = load_policy(reference_path)
         evaluation = evaluate(restored_policy, opponent)
@@ -153,10 +161,15 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
         (output / "evaluation.json").write_text(
             json.dumps({"trained": evaluation, "initial": baseline}, indent=2), encoding="utf-8",
         )
+        if config.environment.start_mode == "approach":
+            (output / "practice-evaluation.json").write_text(json.dumps({
+                "trained": evaluate(restored_policy, opponent, start_mode="approach"),
+                "initial": evaluate(opponent, opponent, start_mode="approach"),
+            }, indent=2), encoding="utf-8")
         result = {"steps": learner.agent.cumulative_timesteps,
                   "new_steps": learner.agent.cumulative_timesteps - start_steps,
                   "starting_updates": start_updates, "iterations": reports,
-                  "device": device, "checkpoint_verified": True,
+                  "device": device, "checkpoint_verified": True, "live_viewer": live,
                   "evaluation": evaluation, "initial_evaluation": baseline}
 
     finally:

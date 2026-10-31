@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from rlgym_ppo.ppo import DiscreteFF
 
 
-def evaluate(policy: "DiscreteFF", opponent: "DiscreteFF") -> dict:
+def evaluate(policy: "DiscreteFF", opponent: "DiscreteFF", *, start_mode: str = "kickoff") -> dict:
     """Play four episodes, swapping sides for each seed, at most 150 steps each.
 
     No gradients or optimization. The frozen opponent and evaluation protocol
@@ -24,7 +24,7 @@ def evaluate(policy: "DiscreteFF", opponent: "DiscreteFF") -> dict:
         for seed in (1001, 1002):
             for team in ("blue", "orange"):
                 random.seed(seed)
-                env = build_env(episode_seconds=10.0, no_touch_seconds=10.0)
+                env = build_env(episode_seconds=10.0, no_touch_seconds=0, start_mode=start_mode)
                 agent = f"{team}-0"
                 other = "orange-0" if team == "blue" else "blue-0"
                 total_reward, touches = 0.0, 0
@@ -52,7 +52,7 @@ def evaluate(policy: "DiscreteFF", opponent: "DiscreteFF") -> dict:
     finally:
         random.setstate(random_state)
     return {
-        "protocol": "frozen-initial-v1", "seeds": [1001, 1002],
+        "protocol": "frozen-initial-v1" if start_mode == "kickoff" else "approach-practice-v1", "seeds": [1001, 1002],
         "action_selection": "argmax", "max_steps_per_episode": 150,
         "wins": sum(row["outcome"] == "win" for row in records),
         "losses": sum(row["outcome"] == "loss" for row in records),

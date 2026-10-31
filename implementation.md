@@ -74,9 +74,48 @@ Evaluation: four draws, zero touches, zero reward, matching the initial policy.
 No playing improvement demonstrated by this small evaluation.
 Run artifacts: `logs/ppo/pilot-20261031T010851Z-90931eb6/`.
 
+## macOS viewer — connected
+
+RLViser 0.9.3 runs on Apple Silicon. `python scripts/watch_policy.py` plays the
+latest checkpoint (blue) against its frozen initial opponent (orange).
+The viewer bridge is isolated in `.venv-viewer`; training pins are unchanged.
+
+Verified: exported simulator frames, viewer connection, and rendered field/ball/cars
+on screen. Playback is recorded policy behaviour, not live training.
+
+## Real-time training viewer — verified
+
+`python scripts/train_smoke.py --config configs/live.toml --live` opens RLViser
+while the simulator collects actual training experience. Both cars use the current
+learning policy. Runs are paced to real time; no recorded playback is used.
+
+Verified fresh seed-43 CPU run: 4,096 transitions, eight iterations, 64 PPO updates,
+checkpoint/inference checks, evaluation, worker and viewer shutdown. Nineteen tests
+pass, including bounded live-frame publishing and pacing. CPU setup and pip checks pass.
+Run: `logs/ppo/live-20261031T123923Z-70a170e1/`.
+
+## Arena checks and approach curriculum
+
+Verified physical rebounds at both side walls, both back walls outside the goals,
+and the ceiling. RocketSim already has a closed arena; no collision rules changed.
+Added simple wall/ceiling grid guides and goal outlines to the macOS viewer.
+Rebuilt RLViser with its missing gizmo-rendering feature and visually verified
+the enclosure during checkpoint playback. Guides approximate the collision mesh.
+
+Added `configs/approach.toml`: randomized near-ball starts, small approach rewards,
+stronger touch/goal rewards, 30-second episodes and no inactivity resets. Old sparse
+profiles/checkpoints remain supported. Per-iteration gameplay metrics now count
+actual touches/goals and measure car speed and speed toward the ball.
+
+Bounded CPU pilot: 40,960 transitions, 34 touches and four goals during exploration.
+Kickoff and easier-practice deterministic evaluation both still had zero touches;
+no learned skill improvement is claimed. All 23 tests, CPU setup and dependency
+checks pass; an old checkpoint also resumed successfully.
+Run: `logs/ppo/approach-v1-20261031T125114Z-2898b4df/`.
+
 ## Next / not yet verified
 
-- Expand evaluation and record training-time touches/rewards before scaling runs.
+- Compare staged runs across seeds using touches, approaches and goal attempts; expand evaluation.
 - Verify on Windows/CUDA.
 - Expand evaluation, then add historical-opponent self-play.
 
