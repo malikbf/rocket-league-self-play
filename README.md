@@ -7,9 +7,10 @@ Historical-opponent self-play is a later milestone.
 ## Current status
 
 The package layout, device selection, setup verification and unit tests are ready.
-Environment composition, policies, PPO orchestration, opponent pools and evaluation
-are documented placeholders. There is no training CLI yet. Next: a minimal
-RocketSim environment and a bounded PPO training smoke test.
+A minimal 1v1 RocketSim environment now supports bounded rollout verification.
+Policies, PPO orchestration, opponent pools and evaluation remain placeholders.
+There is no training CLI yet. Next: integrate the pinned learner and run a bounded
+PPO training smoke test.
 
 ## Layout
 
@@ -142,10 +143,32 @@ metadata. Use module-level environment factories and guarded script entry points
 for Windows/macOS multiprocessing. Avoid network logging by default in future
 smoke tests. Future evaluation should use fixed seeds and frozen opponents.
 
+## Environment smoke check
+
+```bash
+python scripts/verify_environment.py
+```
+
+`environments.factory.build_env()` constructs a 1v1 kickoff environment using
+RLGym's `DefaultObs` (92 values), `LookupTableAction` (90 choices), and
+`RepeatAction` (8 physics ticks per decision). Actions are one-element integer
+NumPy arrays per agent. Rewards are 0.1 for a ball touch and +1/-1 for scoring or
+conceding; these are starting weights, not a tuned learning recipe. Goals terminate
+an episode; 30 simulated seconds without a touch or 300 simulated seconds total
+truncate it. Factory keyword arguments can override action repeat and time limits.
+The caller must reset before stepping and close the environment in a `finally`
+block. Seed Python's `random` before reset to control kickoff placement.
+
+The smoke check seeds Python and NumPy with 42, performs 120 random steps,
+checks observation/action spaces and finite rewards, exercises both timeout
+conditions independently, and forces a goal to check termination and rewards.
+It also verifies reset after episode completion and closes each environment.
+A subprocess enforces a 30-second wall-clock deadline and is killed and reaped
+on timeout. This runs CPU physics only; it does not construct a PPO learner or
+implement historical-opponent self-play. The unittest suite includes this check.
+
 ## Next milestone
 
-1. Compose a small RLGym v2 RocketSim environment with default observations,
-   discrete actions, rewards and termination/truncation conditions.
-2. Wrap it for the pinned RLGym-PPO learner and add explicit config validation.
-3. Run a bounded CPU rollout and PPO update, then validate Windows CUDA.
-4. Save/reload a checkpoint and evaluate before adding historical-opponent pools.
+1. Wrap it for the pinned RLGym-PPO learner and add explicit config validation.
+2. Run a bounded CPU PPO update, then validate Windows CUDA.
+3. Save/reload a checkpoint and evaluate before adding historical-opponent pools.
