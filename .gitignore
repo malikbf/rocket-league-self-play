@@ -12,3 +12,27 @@ runs/
 wandb/
 *.pt
 *.pth
+# Packaging, tooling and local environments
+venv/
+env/
+.venv*/
+*.egg-info/
+build/
+dist/
+*.pyo
+.coverage*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.env
+.env.*
+!.env.example
+
+# Research outputs
+artifacts/
+outputs/
+*.ckpt
+*.onnx
+*.log
+*.replay
+Thumbs.db

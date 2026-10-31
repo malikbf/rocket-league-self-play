@@ -1,0 +1,11 @@
+# Design defaults for the next milestone; no training command consumes this yet.
+[experiment]
+name = "baseline"
+seed = 42
+
+[training]
+device = "auto" # Project selection: CUDA if available, otherwise CPU; never MPS.
+
+[paths]
+checkpoints = "checkpoints"
+logs = "logs"

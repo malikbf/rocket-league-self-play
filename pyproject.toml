@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rocket-league-ai"
+version = "0.1.0"
+description = "Collaborative RocketSim reinforcement learning research"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "torch>=2.5.1,<3",
+  "numpy==1.26.4",
+  "rlgym-api==2.0.0",
+  "rlgym-rocket-league[sim]==2.0.1",
+  "rocketsim==2.2.1",
+  "rlgym-ppo @ git+https://github.com/AechPro/rlgym-ppo@4ffd2e924198bf4b2d59f4bf280b29919d7c07ea",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
