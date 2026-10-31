@@ -25,12 +25,60 @@ Tests passed on macOS:
 - Invalid factory settings rejected; factory is picklable.
 - Eight tests total, including the five device tests. Rollout has a 30-second deadline.
 
+## Step 3 — PPO integration: complete on CPU
+
+Connected the pinned learner through its RLGym adapter. Added validated TOML
+settings and a one-iteration smoke command with one worker, no online logging,
+and a 120-second deadline. Run settings, versions, Git state and results are
+saved under ignored `logs/ppo/` directories.
+
+Tests passed on macOS:
+- 256 agent transitions and four PPO optimizer updates on CPU.
+- Finite rollout data, metrics and model parameters.
+- Both policy and critic parameters changed; worker cleanup completed.
+- Invalid configs rejected; adapter rollout/reset and factory pickling passed.
+- Supervisor timeout handling checked with mocks.
+- Fourteen ordinary tests total; the PPO run is a separate opt-in check.
+
+## Step 4 — Checkpoints and resume: complete on CPU
+
+Each iteration saves networks, optimizer state and counters. Resume continues in
+a new run directory. Runs support up to ten iterations under the same deadline.
+
+Tests passed:
+- Saved network/optimizer tensors match live state; reloaded inference matches.
+- Fresh-process resume advanced from 256 to 768 transitions and four to twelve updates.
+- Invalid checkpoint metadata and nonfinite policy weights are rejected.
+- Inference loading preserves the training random-number state.
+
+## Step 5 — Initial evaluation: complete
+
+Saved policies play a frozen initial opponent using two seeds and both sides.
+Four short episodes report wins/losses/draws, touches and rewards. No learning
+occurs during evaluation; the original opponent is preserved across resumes.
+
+Tests passed:
+- Repeated evaluation gives identical results without changing policy weights.
+- Each episode is capped at 150 steps; environments close after use.
+- Eighteen ordinary tests total, plus separate CPU training/resume checks.
+
+Initial result: four draws, no touches. Better playing strength is not yet demonstrated.
+
+## First training experiment — completed on CPU
+
+`configs/pilot.toml`: ten iterations, 40,960 agent transitions, 160 optimizer
+updates, with a five-minute deadline. Checkpoint/inference verification and worker
+cleanup passed. The latest five checkpoints were retained.
+
+Evaluation: four draws, zero touches, zero reward, matching the initial policy.
+No playing improvement demonstrated by this small evaluation.
+Run artifacts: `logs/ppo/pilot-20261031T010851Z-90931eb6/`.
+
 ## Next / not yet verified
 
-- Connect PPO and validate training configuration.
-- Complete a bounded learning update and checkpoint save/reload.
+- Expand evaluation and record training-time touches/rewards before scaling runs.
 - Verify on Windows/CUDA.
-- Add evaluation, then historical-opponent self-play.
+- Expand evaluation, then add historical-opponent self-play.
 
 ## Run checks
 
@@ -39,9 +87,12 @@ From the repository root, with the virtual environment active:
 ```bash
 python -m unittest discover -s tests -v
 python scripts/verify_environment.py
+python scripts/train_smoke.py --config configs/baseline.toml
 python scripts/verify_setup.py --device cpu
 python -m pip check
 ```
 
 The standalone environment check also runs as part of the unit tests.
-No PPO training or playing strength has been validated yet.
+CPU training, saving, resuming and initial evaluation are verified. Windows/CUDA,
+playing strength and historical self-play are not. Resume restarts episodes and RNG
+streams; it is not an exact continuation of an uninterrupted run.

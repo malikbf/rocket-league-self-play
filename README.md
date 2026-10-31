@@ -8,21 +8,21 @@ Historical-opponent self-play is a later milestone.
 
 The package layout, device selection, setup verification and unit tests are ready.
 A minimal 1v1 RocketSim environment now supports bounded rollout verification.
-Policies, PPO orchestration, opponent pools and evaluation remain placeholders.
-There is no training CLI yet. Next: integrate the pinned learner and run a bounded
-PPO training smoke test.
+A bounded PPO smoke command now uses the pinned learner and validated TOML
+settings. CPU learning updates have passed on macOS. Checkpoint save/reload, fresh-process resume and fixed-seed evaluation against a
+frozen initial policy are verified on CPU. Historical-opponent pools remain future work.
 
 ## Layout
 
 ```text
 src/rocket_league_ai/
   environments/       # factory.py, observations.py, actions.py, rewards.py
-  agents/             # policies.py (future PyTorch networks/inference)
-  training/           # devices.py, ppo.py (future learner integration)
+  agents/             # policies.py (checkpoint inference)
+  training/           # Devices, config, PPO orchestration and checkpoints
   self_play/          # opponent_pool.py (future historical checkpoints)
-  evaluation/         # runner.py (future fixed-opponent evaluation)
-configs/              # TOML experiment templates
-scripts/              # verify_setup.py
+  evaluation/         # runner.py (bounded frozen-opponent evaluation)
+configs/              # Validated TOML smoke settings
+scripts/              # Setup/environment verification and train_smoke.py
 tests/               # standard-library unittest suite
 ```
 
@@ -75,9 +75,9 @@ python scripts/verify_setup.py --device mps
 python -m unittest discover -s tests -v
 ```
 
-The 2.5.1 install is a shared starting baseline, not a claim that it was tested on
-this Mac. At scaffolding time the existing Mac environment had Torch 2.15.0;
-it was preserved. The package allows `torch>=2.5.1,<3` to accommodate existing
+The current project-local Python 3.11 environment has passed CPU setup and PPO
+smoke checks with Torch 2.5.1, plus a standalone MPS probe. This does not validate
+PPO on MPS or Windows CUDA. The package allows `torch>=2.5.1,<3` to accommodate existing
 platform installs, so install your chosen exact Torch version **before** `-e .`.
 Never install `requirements-windows.txt` or a CUDA wheel index on macOS.
 If the MPS probe is unavailable, CPU remains the supported PPO starting point.
@@ -97,7 +97,7 @@ NumPy stays below 2 for this simulation stack.
 | Workload | CUDA | MPS | CPU |
 | --- | --- | --- | --- |
 | Standalone PyTorch | Explicit probe | Explicit probe | Default fallback |
-| Initial RLGym-PPO | Auto when available; smoke test still needed | Unverified; project selector rejects it | Mac/default fallback |
+| Initial RLGym-PPO | Auto when available; smoke test still needed | Unverified; project selector rejects it | Mac smoke test passed |
 | RocketSim physics | CPU simulation | CPU simulation | CPU simulation |
 
 `training.devices.select_device()` selects CUDA then CPU for PPO. With
@@ -167,8 +167,69 @@ A subprocess enforces a 30-second wall-clock deadline and is killed and reaped
 on timeout. This runs CPU physics only; it does not construct a PPO learner or
 implement historical-opponent self-play. The unittest suite includes this check.
 
+## PPO smoke check
+
+```bash
+python scripts/train_smoke.py --config configs/baseline.toml
+```
+
+This opt-in command defaults to one collection/update iteration with one simulator
+worker, 256 agent transitions, two 32-unit hidden layers per network, and one PPO
+epoch. `training.iterations` allows up to ten iterations; `timesteps` is per iteration.
+It uses the pinned library's collection, advantage calculation, and PPO methods;
+it does not implement PPO itself. It avoids the library's interactive training loop
+so exceptions propagate to a nonzero exit status. Observation and return
+standardization are disabled for this initial smoke check.
+
+The default is CPU with a 120-second deadline covering initialization, learning and
+cleanup. The supervisor stops the process tree on timeout. The learner needs local
+loopback sockets; a sandbox may require permission. Online logging and automatic
+checkpoint loading are disabled. Each completed iteration saves policy/critic
+weights, both optimizer states, counters and a compatibility manifest. Saved tensors
+are checked against live state, and an independent CPU policy verifies inference.
+
+Success requires finite rollout data, metrics and parameters, nonzero updates to
+both policy and critic, and worker cleanup. This is a training integration check,
+not evidence of improved playing strength. It is separate from ordinary unit tests.
+
+Artifacts go to a unique ignored `logs/ppo/` directory: input TOML, resolved config
+and learner settings, seed, commit/dirty status, platform, Torch/CUDA information,
+dependency snapshot, console output, progress, checkpoints, evaluation, and result JSON. Failed runs retain
+logs but do not produce a successful result file. For Windows CUDA validation,
+copy the config, change `device` to `"cuda"`, and pass that file with `--config`.
+Windows process-tree cleanup and CUDA learning still require testing there.
+
+### Resume a checkpoint
+
+```bash
+python scripts/train_smoke.py --config configs/baseline.toml --resume logs/ppo/RUN/checkpoints/256
+```
+
+Replace `RUN` and the step number with an actual saved checkpoint. Resume restores
+both networks, Adam optimizer state and learning counters, then performs the
+configured number of **additional** iterations in a new run directory. Environment
+settings must match the checkpoint. Episodes and random streams restart, so this
+is not a bitwise continuation of an uninterrupted run. Keep the whole run directory:
+resume also needs its `reference_policy.pt`. Tensor files load with `weights_only=True`.
+Checkpoints from other architectures or normalization settings are unsupported.
+
+### Initial evaluation
+
+After learning, the saved policy plays a frozen copy of the original untrained
+policy using two fixed seeds and both team assignments (four episodes, at most
+150 steps each). The initial policy is also evaluated against that same opponent.
+Both use deterministic actions and CPU inference. Resume preserves the original
+opponent, allowing like-for-like comparisons within that run's lineage.
+
+`evaluation.json` records wins, losses, draws, touches, reward and episode lengths.
+This is a small baseline, not a competitive skill benchmark. Initial checks yielded
+four draws and no touches; no improvement in playing strength is claimed.
+Evaluation does not train or modify either policy. It shares the run's overall
+wall-clock deadline. If a later iteration/evaluation fails, completed checkpoints
+remain available even though the run has no successful `result.json`.
+
 ## Next milestone
 
-1. Wrap it for the pinned RLGym-PPO learner and add explicit config validation.
-2. Run a bounded CPU PPO update, then validate Windows CUDA.
-3. Save/reload a checkpoint and evaluate before adding historical-opponent pools.
+1. Validate the bounded PPO command and resume on Windows CUDA.
+2. Run staged experiments and compare checkpoints using the same evaluation protocol.
+3. Expand evaluation before adding historical-opponent pools or longer training.

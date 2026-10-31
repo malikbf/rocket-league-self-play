@@ -1,11 +1,18 @@
-# Design defaults for the next milestone; no training command consumes this yet.
+# One bounded PPO smoke iteration, not a long-training configuration.
 [experiment]
 name = "baseline"
 seed = 42
 
-[training]
-device = "auto" # Project selection: CUDA if available, otherwise CPU; never MPS.
+[environment]
+action_repeat = 8
+episode_seconds = 10.0
+no_touch_seconds = 5.0
 
-[paths]
-checkpoints = "checkpoints"
-logs = "logs"
+[training]
+device = "cpu" # auto selects CUDA if available, otherwise CPU; never MPS.
+timesteps = 256 # Agent transitions, not physics ticks.
+batch_size = 64
+minibatch_size = 32
+epochs = 1
+iterations = 1 # Up to 10 bounded iterations; each saves a checkpoint.
+timeout_seconds = 120
