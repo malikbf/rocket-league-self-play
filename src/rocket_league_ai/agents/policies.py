@@ -1,9 +1,16 @@
 """Inference helpers for the initial library policy; no simulator dependencies."""
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import torch
 from rlgym_ppo.ppo import DiscreteFF
+
+
+class ActionPolicy(Protocol):
+    """Observation-only action probabilities shared by learned and fixed policies."""
+
+    def get_output(self, observation: np.ndarray) -> torch.Tensor: ...
 
 
 def load_policy(path: Path) -> DiscreteFF:
@@ -19,7 +26,7 @@ def load_policy(path: Path) -> DiscreteFF:
 
 
 @torch.no_grad()
-def choose_action(policy: DiscreteFF, observation: np.ndarray) -> np.ndarray:
+def choose_action(policy: ActionPolicy, observation: np.ndarray) -> np.ndarray:
     """Choose the most likely control for one car, without changing the policy."""
     probabilities = policy.get_output(observation)
     if probabilities.shape != (90,) or not torch.isfinite(probabilities).all().item():

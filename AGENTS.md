@@ -8,11 +8,18 @@ RocketSim and RLGym-PPO are the baseline. Source lives in `src/rocket_league_ai`
 - `agents`: PyTorch policies and inference; no simulator or training side effects.
 - `training`: learner integration and conservative device selection.
 - `self_play`: future historical checkpoint pools and opponent sampling.
-- `evaluation`: future fixed-seed evaluation and metrics.
+- `evaluation`: bounded fixed-seed evaluation and policy diagnostics.
 
-Most modules are intentionally documented placeholders. Next implement a minimal
-RocketSim environment and bounded PPO smoke test. Do not build PPO from scratch,
-start long training, or claim self-play is implemented.
+A minimal RocketSim environment, bounded PPO smoke runs, checkpoint resume and
+evaluation are implemented. Historical-opponent self-play remains a placeholder.
+Next investigate contact reliability with bounded policy diagnostics before longer
+experiments. Do not build PPO from scratch, start long training, or claim
+historical-opponent self-play is implemented.
+An observation-only drive-to-ball baseline calibrates contact evaluation; keep it
+separate from learned policies and do not describe calibration as learned skill.
+Controlled learning comparisons must change one setting at a time, use fresh
+matched seeds/initial weights and retain the existing baseline defaults. Record
+rollout audit statistics and distinguish training activity from evaluation skill.
 
 ## Conventions
 
@@ -41,6 +48,10 @@ Run the device probe with `--device cuda` or `--device mps` on matching hardware
 Use mocks for hardware selection tests; keep ordinary tests short and CPU-safe.
 Future simulator/training tests must have explicit step/time bounds and clean up
 workers. Report skipped hardware checks and import-only limitations honestly.
+Evaluation diagnostics must preserve training RNG streams and policy weights.
+Keep the frozen opponent and seed set fixed across candidate policies. Report
+sampled and argmax results separately, and distinguish action frequency from
+probability concentration; repeated argmax actions alone do not imply collapse.
 
 Never commit virtual environments, credentials, logs, replays or model weights.
 Use ignored output directories. Record seeds, resolved config, commit, platform,

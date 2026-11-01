@@ -9,9 +9,16 @@ The package layout, device selection, setup verification and unit tests are read
 A minimal 1v1 RocketSim environment now supports bounded rollout verification.
 A bounded PPO smoke command now uses the pinned learner and validated TOML
 settings. CPU learning updates have passed on macOS. Checkpoint save/reload, fresh-process resume and fixed-seed evaluation against a
-frozen initial policy are verified on CPU. Historical-opponent pools remain future work.
+frozen initial policy are verified on CPU. Windows CPU and bounded CUDA training/
+resume checks have also passed with Torch 2.5.1+cu121. Policy diagnostics compare
+sampled and deterministic actions across retained checkpoints. Reliable ball
+contact is not yet demonstrated. Historical-opponent pools remain future work.
 
 ## Layout
+
+To continue development in a later session, start with the "Resume work here"
+section in [implementation.md](implementation.md). Experiment artifacts remain
+local under ignored `logs/`; Git contains the summarized findings and configs.
 
 ```text
 src/rocket_league_ai/
@@ -196,7 +203,9 @@ and learner settings, seed, commit/dirty status, platform, Torch/CUDA informatio
 dependency snapshot, console output, progress, checkpoints, evaluation, and result JSON. Failed runs retain
 logs but do not produce a successful result file. For Windows CUDA validation,
 copy the config, change `device` to `"cuda"`, and pass that file with `--config`.
-Windows process-tree cleanup and CUDA learning still require testing there.
+Windows CUDA collection/update, checkpoint verification, evaluation and normal
+worker cleanup have passed for 256-transition fresh and resumed runs. Forced
+Windows process-tree timeout cleanup is covered by a mock, not a real timeout test.
 
 ### Resume a checkpoint
 
@@ -229,9 +238,9 @@ remain available even though the run has no successful `result.json`.
 
 ## Next milestone
 
-1. Validate the bounded PPO command and resume on Windows CUDA.
-2. Run staged experiments and compare checkpoints using the same evaluation protocol.
-3. Expand evaluation before adding historical-opponent pools or longer training.
+1. Investigate contact reliability with sampled/argmax checkpoint diagnostics.
+2. Compare multiple seeds and expand evaluation before longer staged experiments.
+3. Add historical-opponent pools only after meaningful behavior can be measured.
 
 
 ## Watch a checkpoint on Apple Silicon macOS
@@ -337,3 +346,141 @@ transitions, but deterministic kickoff and practice evaluation still had zero
 touches. This is not evidence of learned competence. Next compare longer staged
 runs and multiple seeds, then gradually reintroduce full kickoff starts and
 harder opponents. Historical-opponent self-play remains unimplemented.
+
+## Diagnose saved policies
+
+Use an actual existing run directory, for example on the current Windows machine:
+
+```powershell
+python scripts/diagnose_policy.py logs/ppo/approach-v1-20261101T195138Z-03fafc8d
+```
+
+This command performs no training. It compares the frozen initial policy and up
+to five latest retained checkpoints on CPU, using both kickoff and approach
+starts. Each candidate plays 20 episodes per action mode by default (seeds
+1001–1010, both teams), at most 150 decisions/10 simulated seconds per episode.
+`--seed-count 1..20` changes coverage; `--seed-count 2` reproduces the original
+seed set. Training's automatic evaluation retains its two-seed default. The
+diagnostic command has a 300-second deadline. Both modes face the same frozen initial
+opponent using argmax; only the evaluated policy switches between argmax and
+locally seeded sampling. Sampling preserves global Python, NumPy and Torch RNG
+streams. Both start modes use sparse rewards and action_repeat=8, regardless of
+the training profile; this diagnostic does not reproduce training collection.
+
+`diagnostics-10-seeds.json` (or the requested seed count) contains all results, source-run metadata
+and evaluation runtime versions/Git state/dependency snapshot. Re-running replaces
+that seed-count-specific file; the original `diagnostics.json` is preserved.
+The report also decodes all 90 actions and each candidate's dominant action into
+throttle, steer, pitch, yaw, roll, jump, boost and handbrake using the installed
+RLGym lookup table. Existing training artifacts and checkpoints are preserved. Ordinary
+training evaluation also includes the new per-episode diagnostic fields.
+
+Metrics include episode touch rate, minimum car-to-ball center distance sampled
+at reset and decision boundaries, 90-action counts, mean entropy in nats and mean
+maximum action probability. Distance is not surface clearance or a contact
+detector; use the actual touch counter for contact. Entropy is at most ln(90),
+approximately 4.50. Repeated argmax choices can occur even when probabilities
+are almost uniform; action frequency alone does not establish policy collapse.
+
+The Windows approach run above collected 73 training touches and one goal in
+40,960 transitions. The original two-seed diagnostics found zero contacts for all five retained trained
+checkpoints in either action mode or start mode. At step 40,960, argmax selected
+action 80 for every decision; approach entropy was about 4.493 and the mean
+maximum probability about 1.40%, indicating a broad distribution. Sampling reduced
+mean closest approach distance from about 1,192 to 729 units without contact.
+The sampled initial policy made four kickoff touches across two of four episodes,
+while retained trained policies made none. These few short games do not establish
+regression or reliable competence; compare additional seeds before changing the
+learning recipe or extending training.
+
+Expanded ten-seed diagnostics (1001–1010, 20 episodes per row) give:
+
+| Policy | Start | Action mode | Touches | Episodes with contact | Mean closest distance |
+|---|---|---|---:|---:|---:|
+| Initial | Kickoff | Sample | 4 | 2/20 | 1,505 |
+| Latest (40,960) | Kickoff | Sample | 0 | 0/20 | 1,549 |
+| Initial | Approach | Sample | 14 | 7/20 | 414 |
+| Latest (40,960) | Approach | Sample | 12 | 6/20 | 426 |
+| Latest (40,960) | Approach | Argmax | 0 | 0/20 | 1,209 |
+
+All retained trained checkpoints still make zero argmax contacts. Sampled
+approach episode contact rates range from 15% to 30%, compared with 35% initially.
+The extra seeds reveal occasional sampled contact missed by the original report,
+but no demonstrated improvement over the initial policy. These are paired,
+short evaluations from one training seed, not independent training replicates or
+evidence of statistically significant regression.
+
+Action 80 decodes to throttle=0, steer=0, pitch=1, yaw=0, roll=1, jump=0,
+boost=0, handbrake=0. It is an aerial orientation control with no driving input
+from a grounded start. Repeating it explains why argmax does not drive toward the
+ball. Do not remove that action or change rewards based solely on this result;
+next check a simple driving/contact baseline and controlled learning comparisons.
+
+## Contact calibration baseline
+
+```powershell
+python scripts/diagnose_policy.py logs/ppo/approach-v1-20261101T195138Z-03fafc8d --baseline-only
+```
+
+This evaluates `drive-to-ball-v1` against the same frozen initial opponent and
+seeds, saving `calibration-10-seeds.json`. It does not train or change checkpoints.
+Full diagnostic runs now include this baseline as well as the initial and retained
+learned policies (520 episodes at the default ten seeds). Baseline-only runs use
+40 episodes; both commands retain the 300-second deadline and `--seed-count`.
+
+The controller reads ball position, own position and forward direction from the
+same pinned 92-value DefaultObs vector as the learned policy. It computes signed
+horizontal heading error, drives forward and steers left/right outside a 0.1-radian
+deadband. It boosts only when aligned within 0.15 radians and more than 800 units
+from the ball. It maps these controls to the installed discrete table. It never
+jumps, predicts ball motion or reads privileged simulator state. It is a fixed
+ground-contact sanity baseline, not a trained policy or competitive opponent.
+
+Ten-seed Windows results (20 episodes per start mode):
+
+| Start | Baseline episodes with contact | Baseline touches | Mean closest distance |
+|---|---:|---:|---:|
+| Kickoff | 20/20 | 46 | 185 |
+| Approach | 20/20 | 62 | 182 |
+
+The latest learned policy had zero argmax contacts and sampled contacts in 0/20
+kickoff and 6/20 approach episodes on the same seeds/opponent. Calibration shows
+the existing observation/action interface can support contact and the evaluation
+can detect it. It does not identify the cause of weak PPO learning, prove the
+reward design is sufficient, or measure competitive playing strength. Next use
+controlled comparisons of the learning setup rather than changing simulation or
+extending training without a hypothesis. Regression tests cover steering, team
+coordinate inversion, boost gating and bounded contact on both teams.
+
+## Controlled learning investigation
+
+The first ablation tests whether the default entropy bonus prevents early policy
+specialization. Two fresh seed-42 CPU runs use the same approach environment,
+initial policy, architecture, learning rates, batch sizes and 40,960-transition
+budget. Only `training.entropy_coef` changes: 0.005 in
+`configs/approach-entropy-control.toml`, zero in `configs/approach-no-entropy.toml`.
+The baseline default remains 0.005; this is a diagnostic experiment, not a new
+recommended learning recipe. Each run retains its 300-second deadline.
+
+`scripts/compare_entropy.py CONTROL_RUN TREATMENT_RUN` checks matching settings
+and initial policy tensors, then compares final policies, the shared initial
+policy and drive-to-ball baseline using seeds 1001–1010 and both teams. It has a
+300-second deadline, does no training and writes a unique report under
+`logs/experiments/`. See `implementation.md` for recorded run paths and findings.
+
+Training now records an `audit` section per iteration in `progress.json` with
+reward/advantage/value-target statistics and action log-probability alignment.
+These checks do not change data or optimization. They fail on nonfinite signals
+or an alignment error greater than 1e-4. Finite, aligned data and changed weights
+still do not prove the PPO targets or learned behavior are correct.
+
+The completed seed-42 comparison found 73 training touches/one goal in the control
+and 72 touches/one goal without entropy. Both final policies made sampled approach
+contact in 6/20 episodes (12 touches), versus 7/20 (14 touches) for the initial
+policy. Both had zero kickoff contacts and zero argmax contacts. The driving
+baseline retained 20/20 contact in each start mode. Stored action log probabilities
+matched the live policy within 4.8e-7 before every update. Removing entropy did
+not improve contact in this test; it is not evidence for disabling it by default.
+One training seed and a small budget do not rule out entropy effects at other
+scales. Next investigate reward/advantage signal scale and update strength with
+another matched experiment; the underlying learning failure remains unresolved.

@@ -83,6 +83,7 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
     )
 
     from rocket_league_ai.training.metrics import TrainingMetrics, summarize
+    from rocket_league_ai.training.audits import audit_rollout
 
     settings = config.training
     device = select_device(settings.device)
@@ -100,6 +101,7 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
             policy_layer_sizes=(32, 32), critic_layer_sizes=(32, 32),
             ppo_batch_size=settings.batch_size, ppo_minibatch_size=settings.minibatch_size,
             ppo_epochs=settings.epochs, standardize_obs=False, standardize_returns=False,
+            ppo_ent_coef=settings.entropy_coef,
             random_seed=config.experiment.seed, device=device,
             log_to_wandb=False, load_wandb=False, checkpoint_load_folder=None,
             checkpoints_save_folder=str(output / "checkpoints"), add_unix_timestamp=False,
@@ -132,6 +134,7 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
             gameplay = summarize(collected_metrics)
             gameplay["mean_reward_per_transition"] = float(np.asarray(experience[3]).mean())
             learner.add_new_experience(experience)
+            audit = audit_rollout(learner, experience)
             report = learner.ppo_learner.learn(learner.experience_buffer)
             if not all(np.isfinite(value) for value in report.values()):
                 raise RuntimeError("Nonfinite PPO metrics")
@@ -153,7 +156,7 @@ def run_smoke(config: SmokeConfig, output: Path, root: Path, resume: Path | None
                 if not torch.allclose(expected, actual, atol=1e-6, rtol=1e-5):
                     raise RuntimeError("Reloaded policy inference differs")
             reports.append({"iteration": iteration + 1, "steps": steps, "metrics": report,
-                            "checkpoint": str(checkpoint), "gameplay": gameplay})
+                            "checkpoint": str(checkpoint), "gameplay": gameplay, "audit": audit})
             (output / "progress.json").write_text(json.dumps(reports, indent=2), encoding="utf-8")
         opponent = load_policy(reference_path)
         evaluation = evaluate(restored_policy, opponent)

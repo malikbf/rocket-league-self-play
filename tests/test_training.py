@@ -26,6 +26,8 @@ class ConfigTests(unittest.TestCase):
         config = load_config(ROOT / "configs/baseline.toml")
         self.assertEqual(config.training.timesteps, 256)
         self.assertEqual(config.training.device, "cpu")
+        self.assertEqual(config.training.entropy_coef, 0.005)
+        self.assertEqual(self.load_text("[training]\nentropy_coef=0").training.entropy_coef, 0)
 
     def test_defaults(self):
         self.assertEqual(self.load_text("").environment.action_repeat, 8)
@@ -40,6 +42,8 @@ class ConfigTests(unittest.TestCase):
             "[training]\nepochs=0", "[training]\niterations=11", "[training]\ntimeout_seconds=301",
             "[environment]\naction_repeat=0", "[environment]\nepisode_seconds=nan",
             "[environment]\nno_touch_seconds=-1",
+            "[training]\nentropy_coef=-1", "[training]\nentropy_coef=nan",
+            "[training]\nentropy_coef=true", "[training]\nentropy_coef=0.11",
         ):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 self.load_text(text)

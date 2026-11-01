@@ -1,0 +1,18 @@
+# One bounded PPO smoke iteration, not a long-training configuration.
+[experiment]
+name = "baseline-cuda"
+seed = 42
+
+[environment]
+action_repeat = 8
+episode_seconds = 10.0
+no_touch_seconds = 5.0
+
+[training]
+device = "cuda" # Explicit CUDA requirement; fail if unavailable.
+timesteps = 256 # Agent transitions, not physics ticks.
+batch_size = 64
+minibatch_size = 32
+epochs = 1
+iterations = 1 # Up to 10 bounded iterations; each saves a checkpoint.
+timeout_seconds = 120

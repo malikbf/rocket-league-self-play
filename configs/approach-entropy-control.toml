@@ -1,0 +1,21 @@
+# Paired entropy experiment: fresh CPU runs, same seed and workload.
+[experiment]
+name = "approach-entropy-control"
+seed = 42
+
+[environment]
+action_repeat = 8
+episode_seconds = 30.0
+no_touch_seconds = 0.0
+reward_profile = "approach_v1"
+start_mode = "approach"
+
+[training]
+device = "cpu"
+timesteps = 4096
+batch_size = 512
+minibatch_size = 128
+epochs = 2
+iterations = 10
+timeout_seconds = 300
+entropy_coef = 0.005

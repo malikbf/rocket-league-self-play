@@ -30,6 +30,7 @@ class TrainingConfig:
     epochs: int = 1
     iterations: int = 1
     timeout_seconds: int = 120
+    entropy_coef: float = 0.005
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,9 @@ def load_config(path: Path) -> SmokeConfig:
         raise ValueError("Unknown start mode")
     if training.device not in ("auto", "cpu", "cuda"):
         raise ValueError("device must be auto, cpu or cuda; PPO MPS is unverified")
+    if (type(training.entropy_coef) not in (int, float)
+            or not math.isfinite(training.entropy_coef) or not 0 <= training.entropy_coef <= 0.1):
+        raise ValueError("entropy_coef must be finite and between 0 and 0.1")
     for name, low, high in (
         ("timesteps", 32, 4096), ("batch_size", 2, 4096),
         ("minibatch_size", 2, 4096), ("epochs", 1, 4), ("iterations", 1, 10), ("timeout_seconds", 10, 300),
