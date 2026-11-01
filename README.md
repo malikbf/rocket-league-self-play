@@ -1,8 +1,7 @@
 # Rocket League Self-Play AI
 
 Collaborative deep reinforcement learning research using Python 3.11, PyTorch,
-RLGym 2.x, RocketSim and RLGym-PPO. We train agents; we do not develop the game.
-Historical-opponent self-play is a later milestone.
+RLGym 2.x, RocketSim and RLGym-PPO.
 
 ## Current status
 
